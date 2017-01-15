@@ -1,17 +1,19 @@
 #!/usr/bin/env python
 # coding: Latin-1
-import subprocess
-import smtplib
 import datetime
-import socket
 import fcntl
+import os
+import smtplib
+import socket
 import struct
-from   email.mime.text import MIMEText
+import subprocess
 from   configparser    import SafeConfigParser
+from   email.mime.text import MIMEText
 
 #	Read the settings from the attached config FileExistsError
 config = SafeConfigParser()
-config.read("StartUpEmailer.ini")
+#config.read("share/StartUpEmailer/StartUpEmailer.ini")
+config.read(os.path.join(os.path.abspath(os.path.dirname(__file__)), "StartUpEmailer.ini"))
 #	Addresses
 toAddress    = config.get("email",   "toAddress")
 fromAddress  = config.get("email",   "fromAddress")
