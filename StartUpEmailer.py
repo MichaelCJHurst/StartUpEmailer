@@ -1,90 +1,92 @@
+"""
+StartUp Emailer
+Sends an email via Google's api, to be used when turned on
+"""
 #!/usr/bin/env python
 # coding: Latin-1
 import datetime
-import fcntl
 import os
 import smtplib
 import socket
-import struct
-import subprocess
-from   configparser    import SafeConfigParser
+from   configparser import SafeConfigParser
 from   email.mime.text import MIMEText
 
-#	Read the settings from the attached config FileExistsError
-config = SafeConfigParser()
-#config.read("share/StartUpEmailer/StartUpEmailer.ini")
-config.read(os.path.join(os.path.abspath(os.path.dirname(__file__)), "StartUpEmailer.ini"))
-#	Addresses
-toAddress    = config.get("email",   "toAddress")
-fromAddress  = config.get("email",   "fromAddress")
-fromPassword = config.get("email",   "fromPassword")
-#	Config
-fromType     = config.get("config",  "fromType")
-#	Message
-subject      = config.get("message", "subject")
-message      = config.get("message", "message")
-#	Set up the lo, wlan0, today, and machine name values
-global eth0IP
-global loIP
-global wlan0IP
-global today
-global machineName
-eth0IP      = "No IP Found"
-loIP        = "No IP Found"
-wlan0IP     = "No IP Found"
-today       = datetime.date.today()  # Get current time/date
-machineName = socket.getfqdn()
+def main():
+	""" Where the program starts """
+	# Get the values from the config
+	config = read_config()
+	# Then get the IP address
+	ip_address = get_ip_address()
+	# If there is no IP address, return
+	if ip_address is None:
+		return
+	# Then use both the config and ip address to write the subject and message
+	subject = parse(config["subject"], ip_address)
+	body    = parse(config["message"], ip_address)
+	# Send the email
+	send_email(config, subject, body)
 
-#	Get the IP address via technowizardry
-def getIPAddress(ifname):
-	s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-	return socket.inet_ntoa(fcntl.ioctl(
-		s.fileno(),
-		0x8915,  # SIOCGIFADDR, whatever that is
-		struct.pack('256s', bytes(ifname[:15], 'utf-8'))
-	)[20:24])
+def read_config():
+	""" Reads the contents of the config file """
+	parser = SafeConfigParser()
+	config = {}
+	parser.read(os.path.join(os.path.abspath(os.path.dirname(__file__)), "StartUpEmailer.ini"))
+	# Addresses
+	config["toAddress"]    = parser.get("email",   "toAddress")
+	config["fromAddress"]  = parser.get("email",   "fromAddress")
+	config["fromPassword"] = parser.get("email",   "fromPassword")
+	# Config
+	config["fromType"]     = parser.get("config",  "fromType")
+	# Message
+	config["subject"]      = parser.get("message", "subject")
+	config["message"]      = parser.get("message", "message")
+	# Return the configuration
+	return config
 
-#	Parse any string with the provided IP addresses and machine address
-def parseIPs(text):
-	global eth0IP
-	global loIP
-	global wlan0IP
-	global today
-	global machineName
-	text = text.replace("{ETH0_IP}",      eth0IP)
-	text = text.replace("{LO_IP}",        loIP)
-	text = text.replace("{WLAN0_IP}",     wlan0IP)
-	text = text.replace("{TODAY}",        today.strftime("%b %d %Y"))
-	text = text.replace("{MACHINE_NAME}", machineName)
+def get_ip_address():
+	""" Gets the IP address of this device """
+	try:
+		sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+		sock.connect(("8.8.8.8", 80))
+		ip_address = sock.getsockname()[0]
+		sock.close()
+	except OSError:
+		return None
+	return ip_address
+
+def parse(text, ip_address):
+	""" Writes the email subject and body """
+	today = datetime.date.today().strftime("%b %d %Y")
+	machine_name = socket.getfqdn()
+	# Parse the string
+	text = text.replace("{IP_ADDRESS}",   ip_address)
+	text = text.replace("{TODAY}",        today)
+	text = text.replace("{MACHINE_NAME}", machine_name)
 	return text
 
-#	Set up the SMTP server
-smtpserver = smtplib.SMTP('smtp.gmail.com', 587) # Server to use.
-smtpserver.ehlo()  # Says 'hello' to the server
-smtpserver.starttls()  # Start TLS encryption
-smtpserver.ehlo()
-smtpserver.login(fromAddress, fromPassword)  # Log in to server
-#	eth0
-try:
-	eth0IP = getIPAddress("eth0")
-except OSError:
-	eth0IP = "No IP found"
-#	lo
-try:
-	loIP = getIPAddress("lo")
-except OSError:
-	loIP = "No IP found"
-#	wlan0
-try:
-	wlan0IP = getIPAddress("wlan0")
-except OSError:
-	wlan0IP = "No IP found"
-#	Ready the email for sending
-email            = MIMEText(parseIPs(message))
-email["Subject"] = parseIPs(subject)
-email["From"]    = fromAddress
-email["To"]      = toAddress
-#	Send the email
-smtpserver.sendmail(fromAddress, [toAddress], email.as_string())
-#	Close the smtp server
-smtpserver.quit()
+def send_email(config, subject, body):
+	""" Sends the email """
+	# If gmail - the only working version for now
+	if config["fromType"] == "gmail":
+		# Set up the SMTP server
+		smtp_server = smtplib.SMTP('smtp.gmail.com', 587)
+		smtp_server.ehlo()
+		# Start encrypting
+		smtp_server.starttls()
+		# Log in to the smtp server
+		smtp_server.login(config["fromAddress"], config["fromPassword"])
+		# prepare the email for sending
+		email            = MIMEText(body)
+		email["Subject"] = subject
+		email["From"]    = config["fromAddress"]
+		email["To"]      = config["toAddress"]
+		# Send the email
+		smtp_server.sendmail(config["fromAddress"], [config["toAddress"]], email.as_string())
+		# Close the smtp server
+		smtp_server.quit()
+	else:
+		print("Invalid from type")
+	return
+
+if __name__ == "__main__":
+	main()
