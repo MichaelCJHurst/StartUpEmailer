@@ -1,0 +1,10 @@
+[email]
+toAddress    = REQUIRED
+fromAddress  = REQUIRED
+fromPassword = REQUIRED
+[config]
+fromType    = gmail
+[message]
+subject     = {MACHINE_NAME}'s IP Address on {TODAY}
+message     = {MACHINE_NAME}'s IP Address:
+	{IP_ADDRESS}
